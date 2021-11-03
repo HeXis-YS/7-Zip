@@ -943,18 +943,19 @@ void CArcCmdLineParser::Parse1(const UStringVector &commandStrings,
   
   // options.LargePages = false;
 
+  unsigned slp = 1;
   if (parser[NKey::kLargePages].ThereIs)
   {
-    unsigned slp = 0;
-    const UString &s = parser[NKey::kLargePages].PostStrings[0];
-    if (s.IsEmpty())
-      slp = 1;
-    else if (s != L"-")
-    {
-      if (!StringToUInt32(s, slp))
-        throw CArcCmdLineException("Unsupported switch postfix for -slp", s);
-    }
-    
+      slp = 0;
+      const UString& s = parser[NKey::kLargePages].PostStrings[0];
+      if (s.IsEmpty())
+          slp = 1;
+      else if (s != L"-")
+      {
+          if (!StringToUInt32(s, slp))
+              throw CArcCmdLineException("Unsupported switch postfix for -slp", s);
+      }
+  }
     #ifdef _7ZIP_LARGE_PAGES
     if (slp >
           #if defined(_WIN32) && !defined(UNDER_CE)
@@ -976,7 +977,6 @@ void CArcCmdLineParser::Parse1(const UStringVector &commandStrings,
       #endif
     }
     #endif
-  }
 
 
   #ifndef UNDER_CE
