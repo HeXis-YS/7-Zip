@@ -345,6 +345,10 @@ SOURCE=..\..\..\Windows\Registry.h
 # End Source File
 # Begin Source File
 
+SOURCE=..\..\..\Windows\SecurityUtils.h
+# End Source File
+# Begin Source File
+
 SOURCE=..\..\..\Windows\Synchronization.h
 # End Source File
 # Begin Source File
@@ -354,6 +358,14 @@ SOURCE=..\..\..\Windows\System.cpp
 # Begin Source File
 
 SOURCE=..\..\..\Windows\System.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\..\Windows\SystemInfo.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\..\Windows\SystemInfo.h
 # End Source File
 # Begin Source File
 
@@ -397,6 +409,14 @@ SOURCE=..\..\..\Common\Defs.h
 # End Source File
 # Begin Source File
 
+SOURCE=..\..\..\Common\DynLimBuf.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\..\Common\DynLimBuf.h
+# End Source File
+# Begin Source File
+
 SOURCE=..\..\..\Common\IntToString.cpp
 # End Source File
 # Begin Source File
@@ -414,6 +434,10 @@ SOURCE=..\..\..\Common\ListFileUtils.h
 # Begin Source File
 
 SOURCE=..\..\..\Common\MyBuffer.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\..\Common\MyBuffer2.h
 # End Source File
 # Begin Source File
 
@@ -843,6 +867,15 @@ SOURCE=..\..\..\..\C\CpuArch.h
 # End Source File
 # Begin Source File
 
+SOURCE=..\..\..\..\C\DllSecur.c
+# SUBTRACT CPP /YX /Yc /Yu
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\..\..\C\DllSecur.h
+# End Source File
+# Begin Source File
+
 SOURCE=..\..\..\..\C\Sort.c
 # SUBTRACT CPP /YX /Yc /Yu
 # End Source File
@@ -863,6 +896,14 @@ SOURCE=..\..\..\..\C\Threads.h
 # Begin Group "ArchiveCommon"
 
 # PROP Default_Filter ""
+# Begin Source File
+
+SOURCE=..\..\Archive\Common\ItemNameUtils.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\Archive\Common\ItemNameUtils.h
+# End Source File
 # Begin Source File
 
 SOURCE=..\..\Archive\Common\OutStreamWithCRC.cpp

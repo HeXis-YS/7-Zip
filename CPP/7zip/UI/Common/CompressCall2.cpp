@@ -6,6 +6,8 @@
 
 #include "../../UI/Common/EnumDirItems.h"
 
+#include "../../UI/FileManager/LangUtils.h"
+
 #include "../../UI/GUI/BenchmarkDialog.h"
 #include "../../UI/GUI/ExtractGUI.h"
 #include "../../UI/GUI/UpdateGUI.h"
@@ -36,7 +38,8 @@ static void ThrowException_if_Error(HRESULT res)
 #define CREATE_CODECS \
   CCodecs *codecs = new CCodecs; \
   CMyComPtr<ICompressCodecsInfo> compressCodecsInfo = codecs; \
-  ThrowException_if_Error(codecs->Load());
+  ThrowException_if_Error(codecs->Load()); \
+  Codecs_AddHashArcHandler(codecs);
 
 #define LOAD_EXTERNAL_CODECS \
     CExternalCodecs __externalCodecs; \
@@ -49,7 +52,8 @@ static void ThrowException_if_Error(HRESULT res)
 #define CREATE_CODECS \
   CCodecs *codecs = new CCodecs; \
   CMyComPtr<IUnknown> compressCodecsInfo = codecs; \
-  ThrowException_if_Error(codecs->Load());
+  ThrowException_if_Error(codecs->Load()); \
+  Codecs_AddHashArcHandler(codecs);
 
 #define LOAD_EXTERNAL_CODECS
 
@@ -120,7 +124,7 @@ HRESULT CompressFiles(
   NWildcard::CCensor censor;
   FOR_VECTOR (i, names)
   {
-    censor.AddPreItem(names[i]);
+    censor.AddPreItem_NoWildcard(names[i]);
   }
 
   bool messageWasDisplayed = false;
@@ -148,17 +152,11 @@ HRESULT CompressFiles(
 
 
 static HRESULT ExtractGroupCommand(const UStringVector &arcPaths,
-    bool showDialog, const UString &outFolder, bool testMode, bool elimDup = false)
+    bool showDialog, CExtractOptions &eo, const char *kType = NULL)
 {
   MY_TRY_BEGIN
   
   CREATE_CODECS
-
-  CExtractOptions eo;
-  eo.OutputDir = us2fs(outFolder);
-  eo.TestMode = testMode;
-  eo.ElimDup.Val = elimDup;
-  eo.ElimDup.Def = elimDup;
 
   CExtractCallbackImp *ecs = new CExtractCallbackImp;
   CMyComPtr<IFolderArchiveExtractCallback> extractCallback = ecs;
@@ -173,7 +171,7 @@ static HRESULT ExtractGroupCommand(const UStringVector &arcPaths,
     NWildcard::CCensor arcCensor;
     FOR_VECTOR (i, arcPaths)
     {
-      arcCensor.AddPreItem(arcPaths[i]);
+      arcCensor.AddPreItem_NoWildcard(arcPaths[i]);
     }
     arcCensor.AddPathsToCensor(NWildcard::k_RelatPath);
     CDirItemsStat st;
@@ -185,6 +183,15 @@ static HRESULT ExtractGroupCommand(const UStringVector &arcPaths,
   }
   
   CObjectVector<COpenType> formatIndices;
+  if (kType)
+  {
+    if (!ParseOpenTypes(*codecs, UString(kType), formatIndices))
+    {
+      throw CSystemException(E_INVALIDARG);
+      // ErrorLangMessage(IDS_UNSUPPORTED_ARCHIVE_TYPE);
+      // return E_INVALIDARG;
+    }
+  }
   
   NWildcard::CCensor censor;
   {
@@ -214,19 +221,50 @@ static HRESULT ExtractGroupCommand(const UStringVector &arcPaths,
   return result;
 }
 
-void ExtractArchives(const UStringVector &arcPaths, const UString &outFolder, bool showDialog, bool elimDup)
+void ExtractArchives(const UStringVector &arcPaths, const UString &outFolder,
+    bool showDialog, bool elimDup, UInt32 writeZone)
 {
-  ExtractGroupCommand(arcPaths, showDialog, outFolder, false, elimDup);
+  CExtractOptions eo;
+  eo.OutputDir = us2fs(outFolder);
+  eo.TestMode = false;
+  eo.ElimDup.Val = elimDup;
+  eo.ElimDup.Def = elimDup;
+  if (writeZone != (UInt32)(Int32)-1)
+    eo.ZoneMode = (NExtract::NZoneIdMode::EEnum)writeZone;
+  ExtractGroupCommand(arcPaths, showDialog, eo);
 }
 
-void TestArchives(const UStringVector &arcPaths)
+void TestArchives(const UStringVector &arcPaths, bool hashMode)
 {
-  ExtractGroupCommand(arcPaths, true, UString(), true);
+  CExtractOptions eo;
+  eo.TestMode = true;
+  ExtractGroupCommand(arcPaths,
+      true, // showDialog
+      eo,
+      hashMode ? "hash" : NULL);
 }
 
-void CalcChecksum(const UStringVector &paths, const UString &methodName)
+void CalcChecksum(const UStringVector &paths,
+    const UString &methodName,
+    const UString &arcPathPrefix,
+    const UString &arcFileName)
 {
   MY_TRY_BEGIN
+
+  if (!arcFileName.IsEmpty())
+  {
+    CompressFiles(
+      arcPathPrefix,
+      arcFileName,
+      UString("hash"),
+      false, // addExtension,
+      paths,
+      false, // email,
+      false, // showDialog,
+      false  // waitFinish
+      );
+    return;
+  }
   
   CREATE_CODECS
   LOAD_EXTERNAL_CODECS
@@ -234,7 +272,7 @@ void CalcChecksum(const UStringVector &paths, const UString &methodName)
   NWildcard::CCensor censor;
   FOR_VECTOR (i, paths)
   {
-    censor.AddPreItem(paths[i]);
+    censor.AddPreItem_NoWildcard(paths[i]);
   }
 
   censor.AddPathsToCensor(NWildcard::k_RelatPath);
@@ -242,6 +280,11 @@ void CalcChecksum(const UStringVector &paths, const UString &methodName)
 
   CHashOptions options;
   options.Methods.Add(methodName);
+
+  /*
+  if (!arcFileName.IsEmpty())
+    options.HashFilePath = arcPathPrefix + arcFileName;
+  */
 
   result = HashCalcGUI(EXTERNAL_CODECS_VARS_L censor, options, messageWasDisplayed);
   if (result != S_OK)
@@ -270,7 +313,11 @@ void Benchmark(bool totalMode)
     prop.Value = "*";
     props.Add(prop);
   }
-  result = Benchmark(EXTERNAL_CODECS_VARS_L props, g_HWND);
+  result = Benchmark(
+      EXTERNAL_CODECS_VARS_L
+      props,
+      k_NumBenchIterations_Default,
+      g_HWND);
   
   MY_TRY_FINISH
 }

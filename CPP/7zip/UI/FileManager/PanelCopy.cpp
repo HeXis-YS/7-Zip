@@ -4,6 +4,8 @@
 
 #include "../../../Common/MyException.h"
 
+#include "../Common/ZipRegistry.h"
+
 #include "../GUI/HashGUI.h"
 
 #include "ExtractCallback.h"
@@ -31,14 +33,14 @@ public:
   CHashBundle Hash;
   // UString FirstFilePath;
 
-  HRESULT Result;
+  // HRESULT Result2;
 
   void ShowFinalResults(HWND hwnd);
   
   CPanelCopyThread():
-    Result(E_FAIL),
     ResultsWereShown(false),
     NeedShowRes(false)
+    // , Result2(E_FAIL)
     {}
 };
 
@@ -68,6 +70,17 @@ HRESULT CPanelCopyThread::ProcessVirt()
   }
   */
 
+  HRESULT result2;
+
+  {
+    CMyComPtr<IFolderSetZoneIdMode> setZoneMode;
+    FolderOperations.QueryInterface(IID_IFolderSetZoneIdMode, &setZoneMode);
+    if (setZoneMode)
+    {
+      RINOK(setZoneMode->SetZoneIdMode(options->ZoneIdMode));
+    }
+  }
+
   if (options->testMode)
   {
     CMyComPtr<IArchiveFolder> archiveFolder;
@@ -79,21 +92,21 @@ HRESULT CPanelCopyThread::ProcessVirt()
     NExtract::NPathMode::EEnum pathMode =
         NExtract::NPathMode::kCurPaths;
         // NExtract::NPathMode::kFullPathnames;
-    Result = archiveFolder->Extract(&Indices.Front(), Indices.Size(),
+    result2 = archiveFolder->Extract(&Indices.Front(), Indices.Size(),
         BoolToInt(options->includeAltStreams),
         BoolToInt(options->replaceAltStreamChars),
         pathMode, NExtract::NOverwriteMode::kAsk,
         options->folder, BoolToInt(true), extractCallback2);
   }
   else
-    Result = FolderOperations->CopyTo(
+    result2 = FolderOperations->CopyTo(
       BoolToInt(options->moveMode),
       &Indices.Front(), Indices.Size(),
       BoolToInt(options->includeAltStreams),
       BoolToInt(options->replaceAltStreamChars),
       options->folder, ExtractCallback);
 
-  if (Result == S_OK && !ExtractCallbackSpec->ThereAreMessageErrors)
+  if (result2 == S_OK && !ExtractCallbackSpec->ThereAreMessageErrors)
   {
     if (!options->hashMethods.IsEmpty())
       NeedShowRes = true;
@@ -104,7 +117,7 @@ HRESULT CPanelCopyThread::ProcessVirt()
     }
   }
 
-  return Result;
+  return result2;
 }
 
 
@@ -124,6 +137,20 @@ HRESULT CPanel::CopyTo(CCopyToOptions &options, const CRecordVector<UInt32> &ind
     UStringVector *messages,
     bool &usePassword, UString &password)
 {
+  if (options.NeedRegistryZone && !options.testMode)
+  {
+    CContextMenuInfo ci;
+    ci.Load();
+    if (ci.WriteZone != (UInt32)(Int32)-1)
+      options.ZoneIdMode = (NExtract::NZoneIdMode::EEnum)(int)(Int32)ci.WriteZone;
+  }
+
+  if (IsHashFolder())
+  {
+    if (!options.testMode)
+      return E_NOTIMPL;
+  }
+  
   if (!_folderOperations)
   {
     UString errorMessage = LangString(IDS_OPERATION_IS_NOT_SUPPORTED);
@@ -213,7 +240,7 @@ HRESULT CPanel::CopyTo(CCopyToOptions &options, const CRecordVector<UInt32> &ind
       title = LangString(titleID);
   }
 
-  UString progressWindowTitle ("7-Zip"); // LangString(IDS_APP_TITLE);
+  const UString progressWindowTitle ("7-Zip"); // LangString(IDS_APP_TITLE);
   
   extracter.MainWindow = GetParent();
   extracter.MainTitle = progressWindowTitle;
@@ -232,6 +259,8 @@ HRESULT CPanel::CopyTo(CCopyToOptions &options, const CRecordVector<UInt32> &ind
 
   if (messages)
     *messages = extracter.Sync.Messages;
+
+  // res = extracter.Result2;
   res = extracter.Result;
 
   if (res == S_OK && extracter.ExtractCallbackSpec->IsOK())
@@ -286,6 +315,11 @@ struct CThreadUpdate
 HRESULT CPanel::CopyFrom(bool moveMode, const UString &folderPrefix, const UStringVector &filePaths,
     bool showErrorMessages, UStringVector *messages)
 {
+  if (IsHashFolder())
+  {
+    if (moveMode)
+      return E_NOTIMPL;
+  }
   // CDisableNotify disableNotify(*this);
 
   HRESULT res;
@@ -327,9 +361,11 @@ HRESULT CPanel::CopyFrom(bool moveMode, const UString &folderPrefix, const UStri
   for (i = 0; i < updater.FileNames.Size(); i++)
     updater.FileNamePointers.AddInReserved(updater.FileNames[i]);
 
-  NWindows::CThread thread;
-  RINOK(thread.Create(CThreadUpdate::MyThreadFunction, &updater));
-  updater.ProgressDialog.Create(title, thread, GetParent());
+  {
+    NWindows::CThread thread;
+    RINOK(thread.Create(CThreadUpdate::MyThreadFunction, &updater));
+    updater.ProgressDialog.Create(title, thread, GetParent());
+  }
 
   if (messages)
     *messages = updater.ProgressDialog.Sync.Messages;

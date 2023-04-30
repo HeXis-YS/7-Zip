@@ -302,12 +302,12 @@ HRESULT CUnpacker::Unpack2(
   UInt64 packDataSize;
   size_t numChunks;
   {
-    UInt64 numChunks64 = (unpackSize + (((UInt32)1 << chunkSizeBits) - 1)) >> chunkSizeBits;
-    UInt64 sizesBufSize64 = (numChunks64 - 1) << entrySizeShifts;
+    const UInt64 numChunks64 = (unpackSize + (((UInt32)1 << chunkSizeBits) - 1)) >> chunkSizeBits;
+    const UInt64 sizesBufSize64 = (numChunks64 - 1) << entrySizeShifts;
     if (sizesBufSize64 > resource.PackSize)
       return S_FALSE;
     packDataSize = resource.PackSize - sizesBufSize64;
-    size_t sizesBufSize = (size_t)sizesBufSize64;
+    const size_t sizesBufSize = (size_t)sizesBufSize64;
     if (sizesBufSize != sizesBufSize64)
       return E_OUTOFMEMORY;
     sizesBuf.AllocAtLeast(sizesBufSize);
@@ -567,9 +567,12 @@ void CDatabase::GetItemPath(unsigned index1, bool showImageNumber, NWindows::NCO
       for (unsigned i = 0; i < len; i++)
       {
         wchar_t c = Get16(meta + i * 2);
-        // 18.06
-        if (c == CHAR_PATH_SEPARATOR || c == '/')
-          c = '_';
+        if (c == L'/')
+          c = L'_';
+        #if WCHAR_PATH_SEPARATOR != L'/'
+        else if (c == L'\\')
+          c = WCHAR_IN_FILE_NAME_BACKSLASH_REPLACEMENT; // 22.00 : WSL scheme
+        #endif
         dest[i] = c;
       }
     }
@@ -639,10 +642,10 @@ HRESULT CDatabase::ParseDirItem(size_t pos, int parent)
     p += dirRecordSize;
     
     {
-      if (*(const UInt16 *)(p + fileNameLen) != 0)
+      if (*(const UInt16 *)(const void *)(p + fileNameLen) != 0)
         return S_FALSE;
       for (UInt32 j = 0; j < fileNameLen; j += 2)
-        if (*(const UInt16 *)(p + j) == 0)
+        if (*(const UInt16 *)(const void *)(p + j) == 0)
           return S_FALSE;
     }
 
@@ -652,10 +655,10 @@ HRESULT CDatabase::ParseDirItem(size_t pos, int parent)
     {
       // empty shortName has no ZERO at the end ?
       const Byte *p2 = p + fileNameLen2;
-      if (*(const UInt16 *)(p2 + shortNameLen) != 0)
+      if (*(const UInt16 *)(const void *)(p2 + shortNameLen) != 0)
         return S_FALSE;
       for (UInt32 j = 0; j < shortNameLen; j += 2)
-        if (*(const UInt16 *)(p2 + j) == 0)
+        if (*(const UInt16 *)(const void *)(p2 + j) == 0)
           return S_FALSE;
     }
       
@@ -703,10 +706,10 @@ HRESULT CDatabase::ParseDirItem(size_t pos, int parent)
       
       {
         const Byte *p3 = p2 + extraOffset + 2;
-        if (*(const UInt16 *)(p3 + fileNameLen111) != 0)
+        if (*(const UInt16 *)(const void *)(p3 + fileNameLen111) != 0)
           return S_FALSE;
         for (UInt32 j = 0; j < fileNameLen111; j += 2)
-          if (*(const UInt16 *)(p3 + j) == 0)
+          if (*(const UInt16 *)(const void *)(p3 + j) == 0)
             return S_FALSE;
   
         // PRF(printf("\n  %S", p3));
@@ -1790,7 +1793,8 @@ void CImageInfo::Parse(const CXmlItem &item)
 {
   CTimeDefined = ParseTime(item, CTime, "CREATIONTIME");
   MTimeDefined = ParseTime(item, MTime, "LASTMODIFICATIONTIME");
-  NameDefined = ConvertUTF8ToUnicode(item.GetSubStringForTag("NAME"), Name);
+  NameDefined = true;
+  ConvertUTF8ToUnicode(item.GetSubStringForTag("NAME"), Name);
 
   ParseNumber64(item.GetSubStringForTag("DIRCOUNT"), DirCount);
   ParseNumber64(item.GetSubStringForTag("FILECOUNT"), FileCount);

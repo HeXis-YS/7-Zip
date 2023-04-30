@@ -7,6 +7,7 @@
 
 #include "../../../Common/ComTry.h"
 #include "../../../Common/IntToString.h"
+#include "../../../Common/MyBuffer2.h"
 #include "../../../Common/UTFConvert.h"
 
 #include "../../../Windows/PropVariantUtils.h"
@@ -104,37 +105,6 @@ static const char * const g_LinkTypes[] =
 static const char g_ExtraTimeFlags[] = { 'u', 'M', 'C', 'A', 'n' };
 
 
-template <unsigned alignMask>
-struct CAlignedBuffer
-{
-  Byte *_buf;
-  Byte *_bufBase;
-  size_t _size;
-
-  CAlignedBuffer(): _buf(NULL), _bufBase(NULL), _size(0) {}
-  ~CAlignedBuffer() { ::MyFree(_bufBase); }
-public:
-  operator       Byte *()       { return _buf; }
-  operator const Byte *() const { return _buf; }
-
-  void AllocAtLeast(size_t size)
-  {
-    if (_buf && _size >= size)
-      return;
-    ::MyFree(_bufBase);
-    _buf = NULL;
-    _size = 0;
-    _bufBase = (Byte *)::MyAlloc(size + alignMask);
-   
-    if (_bufBase)
-    {
-      _size = size;
-      // _buf = (Byte *)(((uintptr_t)_bufBase + alignMask) & ~(uintptr_t)alignMask);
-         _buf = (Byte *)(((ptrdiff_t)_bufBase + alignMask) & ~(ptrdiff_t)alignMask);
-    }
-  }
-};
-
 static unsigned ReadVarInt(const Byte *p, size_t maxSize, UInt64 *val)
 {
   *val = 0;
@@ -154,19 +124,13 @@ static unsigned ReadVarInt(const Byte *p, size_t maxSize, UInt64 *val)
 bool CLinkInfo::Parse(const Byte *p, unsigned size)
 {
   const Byte *pStart = p;
-  unsigned num = ReadVarInt(p, size, &Type);
-  if (num == 0) return false; p += num; size -= num;
-  
-  num = ReadVarInt(p, size, &Flags);
-  if (num == 0) return false; p += num; size -= num;
-
+  unsigned num;
   UInt64 len;
-  num = ReadVarInt(p, size, &len);
-  if (num == 0) return false; p += num; size -= num;
-
+  num = ReadVarInt(p, size, &Type);  if (num == 0) { return false; }  p += num; size -= num;
+  num = ReadVarInt(p, size, &Flags); if (num == 0) { return false; }  p += num; size -= num;
+  num = ReadVarInt(p, size, &len);   if (num == 0) { return false; }  p += num; size -= num;
   if (size != len)
     return false;
-
   NameLen = (unsigned)len;
   NameOffset = (unsigned)(p - pStart);
   return true;
@@ -349,10 +313,10 @@ bool CCryptoInfo::Parse(const Byte *p, size_t size)
   Cnt = 0;
 
   unsigned num = ReadVarInt(p, size, &Algo);
-  if (num == 0) return false; p += num; size -= num;
+  if (num == 0) { return false; }  p += num; size -= num;
   
   num = ReadVarInt(p, size, &Flags);
-  if (num == 0) return false; p += num; size -= num;
+  if (num == 0) { return false; }  p += num; size -= num;
 
   if (size > 0)
     Cnt = p[0];
@@ -374,10 +338,10 @@ bool CItem::FindExtra_Version(UInt64 &version) const
 
   UInt64 flags;
   unsigned num = ReadVarInt(p, size, &flags);
-  if (num == 0) return false; p += num; size -= num;
+  if (num == 0) { return false; }  p += num; size -= num;
   
   num = ReadVarInt(p, size, &version);
-  if (num == 0) return false; p += num; size -= num;
+  if (num == 0) { return false; }  p += num; size -= num;
 
   return size == 0;
 }
@@ -436,8 +400,8 @@ void CItem::Link_to_Prop(unsigned linkType, NWindows::NCOM::CPropVariant &prop) 
   s.SetFrom_CalcLen((const char *)(Extra + link.NameOffset), link.NameLen);
 
   UString unicode;
-  if (ConvertUTF8ToUnicode(s, unicode))
-    prop = NItemName::GetOsPath(unicode);
+  ConvertUTF8ToUnicode(s, unicode);
+  prop = NItemName::GetOsPath(unicode);
 }
 
 bool CItem::GetAltStreamName(AString &name) const
@@ -578,7 +542,7 @@ STDMETHODIMP COutStreamWithHash::Write(const void *data, UInt32 size, UInt32 *pr
 
 class CInArchive
 {
-  CAlignedBuffer<AES_BLOCK_SIZE - 1> _buf;
+  CAlignedBuffer _buf;
   size_t _bufSize;
   size_t _bufPos;
   ISequentialInStream *_stream;
@@ -586,7 +550,7 @@ class CInArchive
   NCrypto::NRar5::CDecoder *m_CryptoDecoderSpec;
   CMyComPtr<ICompressFilter> m_CryptoDecoder;
 
-
+  CLASS_NO_COPY(CInArchive)
 
   HRESULT ReadStream_Check(void *data, size_t size);
 
@@ -610,6 +574,8 @@ public:
     UInt64 DataSize;
   };
 
+  CInArchive() {}
+
   HRESULT ReadBlockHeader(CHeader &h);
   bool ReadFileHeader(const CHeader &header, CItem &item);
   void AddToSeekValue(UInt64 addValue)
@@ -624,11 +590,12 @@ public:
 
 static HRESULT MySetPassword(ICryptoGetTextPassword *getTextPassword, NCrypto::NRar5::CDecoder *cryptoDecoderSpec)
 {
-  CMyComBSTR password;
+  CMyComBSTR_Wipe password;
   RINOK(getTextPassword->CryptoGetTextPassword(&password));
-  AString utf8;
+  AString_Wipe utf8;
   const unsigned kPasswordLen_MAX = 127;
-  UString unicode = (LPCOLESTR)password;
+  UString_Wipe unicode;
+  unicode.SetFromBstr(password);
   if (unicode.Len() > kPasswordLen_MAX)
     unicode.DeleteFrom(kPasswordLen_MAX);
   ConvertUnicodeToUTF8(unicode, utf8);
@@ -1181,7 +1148,7 @@ HRESULT CUnpacker::Code(const CItem &item, const CItem &lastItem, UInt64 packSiz
   }
   else
   {
-    res = res;
+    // res = res;
   }
 
   if (isCryptoMode)
@@ -1462,8 +1429,8 @@ STDMETHODIMP CHandler::GetArchiveProperty(PROPID propID, PROPVARIANT *value)
           AString s;
           s.SetFrom_CalcLen((const char *)(const Byte *)cmt, (unsigned)cmt.Size());
           UString unicode;
-          if (ConvertUTF8ToUnicode(s, unicode))
-            prop = unicode;
+          ConvertUTF8ToUnicode(s, unicode);
+          prop = unicode;
         }
       }
       break;
@@ -1624,14 +1591,14 @@ STDMETHODIMP CHandler::GetRawProp(UInt32 index, PROPID propID, const void **data
 static void TimeRecordToProp(const CItem &item, unsigned stampIndex, NCOM::CPropVariant &prop)
 {
   unsigned size;
-  int offset = item.FindExtra(NExtraID::kTime, size);
+  const int offset = item.FindExtra(NExtraID::kTime, size);
   if (offset < 0)
     return;
 
   const Byte *p = item.Extra + (unsigned)offset;
   UInt64 flags;
   {
-    unsigned num = ReadVarInt(p, size, &flags);
+    const unsigned num = ReadVarInt(p, size, &flags);
     if (num == 0)
       return;
     p += num;
@@ -1643,8 +1610,8 @@ static void TimeRecordToProp(const CItem &item, unsigned stampIndex, NCOM::CProp
   
   unsigned numStamps = 0;
   unsigned curStamp = 0;
-  unsigned i;
-  for (i = 0; i < 3; i++)
+
+  for (unsigned i = 0; i < 3; i++)
     if ((flags & (NTimeRecord::NFlags::kMTime << i)) != 0)
     {
       if (i == stampIndex)
@@ -1653,20 +1620,28 @@ static void TimeRecordToProp(const CItem &item, unsigned stampIndex, NCOM::CProp
     }
 
   FILETIME ft;
-  
+
+  unsigned timePrec = 0;
+  unsigned ns100 = 0;
+
   if ((flags & NTimeRecord::NFlags::kUnixTime) != 0)
   {
     curStamp *= 4;
     if (curStamp + 4 > size)
       return;
-    const Byte *p2 = p + curStamp;
-    UInt64 val = NTime::UnixTimeToFileTime64(Get32(p2));
+    p += curStamp;
+    UInt64 val = NTime::UnixTime_To_FileTime64(Get32(p));
     numStamps *= 4;
+    timePrec = k_PropVar_TimePrec_Unix;
     if ((flags & NTimeRecord::NFlags::kUnixNs) != 0 && numStamps * 2 <= size)
     {
-      const UInt32 ns = Get32(p2 + numStamps) & 0x3FFFFFFF;
+      const UInt32 ns = Get32(p + numStamps) & 0x3FFFFFFF;
       if (ns < 1000000000)
+      {
         val += ns / 100;
+        ns100 = (unsigned)(ns % 100);
+        timePrec = k_PropVar_TimePrec_1ns;
+      }
     }
     ft.dwLowDateTime = (DWORD)val;
     ft.dwHighDateTime = (DWORD)(val >> 32);
@@ -1676,12 +1651,12 @@ static void TimeRecordToProp(const CItem &item, unsigned stampIndex, NCOM::CProp
     curStamp *= 8;
     if (curStamp + 8 > size)
       return;
-    const Byte *p2 = p + curStamp;
-    ft.dwLowDateTime = Get32(p2);
-    ft.dwHighDateTime = Get32(p2 + 4);
+    p += curStamp;
+    ft.dwLowDateTime = Get32(p);
+    ft.dwHighDateTime = Get32(p + 4);
   }
   
-  prop = ft;
+  prop.SetAsTimeFrom_FT_Prec_Ns100(ft, timePrec, ns100);
 }
 
 
@@ -1714,13 +1689,12 @@ STDMETHODIMP CHandler::GetProperty(UInt32 index, PROPID propID, PROPVARIANT *val
         if (name[0] != ':')
           s += ':';
         s += name;
-        if (!ConvertUTF8ToUnicode(s, unicodeName))
-          break;
+        ConvertUTF8ToUnicode(s, unicodeName);
       }
       else
       {
-        if (!ConvertUTF8ToUnicode(item.Name, unicodeName))
-          break;
+        ConvertUTF8ToUnicode(item.Name, unicodeName);
+
         if (item.Version_Defined)
         {
           char temp[32];
@@ -1749,21 +1723,13 @@ STDMETHODIMP CHandler::GetProperty(UInt32 index, PROPID propID, PROPVARIANT *val
     {
       TimeRecordToProp(item, NTimeRecord::k_Index_MTime, prop);
       if (prop.vt == VT_EMPTY && item.Has_UnixMTime())
-      {
-        FILETIME ft;
-        NWindows::NTime::UnixTimeToFileTime(item.UnixMTime, ft);
-        prop = ft;
-      }
+        PropVariant_SetFrom_UnixTime(prop, item.UnixMTime);
       if (prop.vt == VT_EMPTY && ref.Parent >= 0)
       {
         const CItem &baseItem = _items[_refs[ref.Parent].Item];
         TimeRecordToProp(baseItem, NTimeRecord::k_Index_MTime, prop);
         if (prop.vt == VT_EMPTY && baseItem.Has_UnixMTime())
-        {
-          FILETIME ft;
-          NWindows::NTime::UnixTimeToFileTime(baseItem.UnixMTime, ft);
-          prop = ft;
-        }
+          PropVariant_SetFrom_UnixTime(prop, baseItem.UnixMTime);
       }
       break;
     }
@@ -1780,8 +1746,8 @@ STDMETHODIMP CHandler::GetProperty(UInt32 index, PROPID propID, PROPVARIANT *val
         {
           name.DeleteFrontal(1);
           UString unicodeName;
-          if (ConvertUTF8ToUnicode(name, unicodeName))
-            prop = unicodeName;
+          ConvertUTF8ToUnicode(name, unicodeName);
+          prop = unicodeName;
         }
       }
       break;

@@ -27,29 +27,40 @@ void CAgentFolder::GetPathParts(UStringVector &pathParts, bool &isAltStreamFolde
     _proxy->GetDirPathParts(_proxyDirIndex, pathParts);
 }
 
-static bool DeleteEmptyFolderAndEmptySubFolders(const FString &path)
+static bool Delete_EmptyFolder_And_EmptySubFolders(const FString &path)
 {
-  NFind::CFileInfo fileInfo;
-  FString pathPrefix = path;
-  pathPrefix.Add_PathSepar();
   {
-    NFind::CEnumerator enumerator;
-    enumerator.SetDirPrefix(pathPrefix);
-    while (enumerator.Next(fileInfo))
+    const FString pathPrefix = path + FCHAR_PATH_SEPARATOR;
+    CObjectVector<FString> names;
     {
-      if (fileInfo.IsDir())
-        if (!DeleteEmptyFolderAndEmptySubFolders(pathPrefix + fileInfo.Name))
+      NFind::CDirEntry fileInfo;
+      NFind::CEnumerator enumerator;
+      enumerator.SetDirPrefix(pathPrefix);
+      for (;;)
+      {
+        bool found;
+        if (!enumerator.Next(fileInfo, found))
           return false;
+        if (!found)
+          break;
+        if (fileInfo.IsDir())
+          names.Add(fileInfo.Name);
+      }
     }
+    bool res = true;
+    FOR_VECTOR (i, names)
+    {
+      if (!Delete_EmptyFolder_And_EmptySubFolders(pathPrefix + names[i]))
+        res = false;
+    }
+    if (!res)
+      return false;
   }
-  /*
-  // we don't need clear readonly for folders
+  // we clear read-only attrib to remove read-only dir
   if (!SetFileAttrib(path, 0))
     return false;
-  */
   return RemoveDir(path);
 }
-
 
 HRESULT CAgentFolder::CommonUpdateOperation(
     AGENT_OP operation,
@@ -59,6 +70,9 @@ HRESULT CAgentFolder::CommonUpdateOperation(
     const UInt32 *indices, UInt32 numItems,
     IProgress *progress)
 {
+  if (moveMode && _agentSpec->_isHashHandler)
+    return E_NOTIMPL;
+
   if (!_agentSpec->CanUpdate())
     return E_NOTIMPL;
 
@@ -123,7 +137,7 @@ HRESULT CAgentFolder::CommonUpdateOperation(
       case AGENT_OP_Uni:
         {
           Byte actionSetByte[NUpdateArchive::NPairState::kNumValues];
-          for (int i = 0; i < NUpdateArchive::NPairState::kNumValues; i++)
+          for (unsigned i = 0; i < NUpdateArchive::NPairState::kNumValues; i++)
             actionSetByte[i] = (Byte)actionSet->StateActions[i];
           result = _agentSpec->DoOperation2(
               moveMode ? &requestedPaths : NULL,
@@ -162,7 +176,7 @@ HRESULT CAgentFolder::CommonUpdateOperation(
       {
         const FString &fs = requestedPaths[i];
         if (NFind::DoesDirExist(fs))
-          DeleteEmptyFolderAndEmptySubFolders(fs);
+          Delete_EmptyFolder_And_EmptySubFolders(fs);
       }
     }
   }
@@ -196,7 +210,7 @@ HRESULT CAgentFolder::CommonUpdateOperation(
     FOR_VECTOR (i, pathParts)
     {
       int next = _proxy->FindSubDir(_proxyDirIndex, pathParts[i]);
-      if (next < 0)
+      if (next == -1)
         break;
       _proxyDirIndex = next;
     }
@@ -212,7 +226,7 @@ HRESULT CAgentFolder::CommonUpdateOperation(
     {
       bool dirOnly = (i + 1 < pathParts.Size() || !isAltStreamFolder);
       int index = _proxy2->FindItem(_proxyDirIndex, pathParts[i], dirOnly);
-      if (index < 0)
+      if (index == -1)
         break;
       
       const CProxyFile2 &file = _proxy2->Files[_proxy2->Dirs[_proxyDirIndex].Items[index]];
@@ -221,7 +235,7 @@ HRESULT CAgentFolder::CommonUpdateOperation(
         _proxyDirIndex = file.DirIndex;
       else
       {
-        if (file.AltDirIndex >= 0)
+        if (file.AltDirIndex != -1)
           _proxyDirIndex = file.AltDirIndex;
         break;
       }
@@ -337,7 +351,7 @@ STDMETHODIMP CAgentFolder::CreateFolder(const wchar_t *name, IProgress *progress
   }
   else
   {
-    if (_proxy->FindSubDir(_proxyDirIndex, name) >= 0)
+    if (_proxy->FindSubDir(_proxyDirIndex, name) != -1)
       return ERROR_ALREADY_EXISTS;
   }
   

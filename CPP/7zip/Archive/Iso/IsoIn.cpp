@@ -299,10 +299,12 @@ void CInArchive::ReadVolumeDescriptor(CVolumeDescriptor &d)
 
 static const Byte kSig_CD001[5] = { 'C', 'D', '0', '0', '1' };
 
+/*
 static const Byte kSig_NSR02[5] = { 'N', 'S', 'R', '0', '2' };
 static const Byte kSig_NSR03[5] = { 'N', 'S', 'R', '0', '3' };
 static const Byte kSig_BEA01[5] = { 'B', 'E', 'A', '0', '1' };
 static const Byte kSig_TEA01[5] = { 'T', 'E', 'A', '0', '1' };
+*/
 
 static inline bool CheckSignature(const Byte *sig, const Byte *data)
 {
@@ -585,6 +587,8 @@ HRESULT CInArchive::Open2()
   for (MainVolDescIndex = VolDescs.Size() - 1; MainVolDescIndex > 0; MainVolDescIndex--)
     if (VolDescs[MainVolDescIndex].IsJoliet())
       break;
+  /* FIXME: some volume can contain Rock Ridge, that is better than
+     Joliet volume. So we need some way to detect such case */
   // MainVolDescIndex = 0; // to read primary volume
   const CVolumeDescriptor &vd = VolDescs[MainVolDescIndex];
   if (vd.LogicalBlockSize != kBlockSize)
