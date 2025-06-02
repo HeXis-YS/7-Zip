@@ -23,9 +23,9 @@ PROGPATH = $(O)/$(PROG)
 PROGPATH_STATIC = $(O)/$(PROG)s
 
 
-ifneq ($(CC), xlc)
-CFLAGS_WARN_WALL = -Werror -Wall -Wextra
-endif
+# ifneq ($(CC), xlc)
+# CFLAGS_WARN_WALL = -Werror -Wall -Wextra
+# endif
 
 # for object file
 # -Wa,-aln=test.s
@@ -50,9 +50,9 @@ endif
 endif
 
 # CFLAGS_BASE_LIST = -S
-CFLAGS_BASE = -O2 $(CFLAGS_BASE_LIST) $(CFLAGS_WARN_WALL) $(CFLAGS_WARN) \
- $(CFLAGS_DEBUG) -D_REENTRANT -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE \
- -fPIC
+CFLAGS_BASE = -march=native -Ofast -flto=full -fno-plt \
+ $(CFLAGS_BASE_LIST) $(CFLAGS_WARN_WALL) $(CFLAGS_WARN) \
+ $(CFLAGS_DEBUG) -D_REENTRANT -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE
 
 FLAGS_FLTO = -ffunction-sections
 FLAGS_FLTO = -flto
@@ -251,7 +251,7 @@ endif
 endif
 
 
-LFLAGS_ALL = $(LFLAGS_STRIP) $(MY_ARCH_2) $(LDFLAGS) $(FLAGS_FLTO) $(LD_arch) $(LFLAGS_NOEXECSTACK) $(OBJS) $(MY_LIBS) $(LIB2)
+LFLAGS_ALL = $(LFLAGS_STRIP) $(MY_ARCH_2) $(LDFLAGS) $(FLAGS_FLTO) $(LD_arch) $(LFLAGS_NOEXECSTACK) -fuse-ld=lld -s -Wl,-O2,--gc-sections $(OBJS) $(MY_LIBS) $(LIB2)
 
 # -s : GCC : Remove all symbol table and relocation information from the executable.
 # -s : CLANG : unsupported
