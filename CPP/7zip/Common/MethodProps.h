@@ -141,11 +141,11 @@ public:
     if (Get_DicSize(v))
       return v;
     const unsigned level = GetLevel();
-    const UInt32 dictSize = level <= 4 ?
-        (UInt32)1 << (level * 2 + 16) :
-        level <= sizeof(size_t) / 2 + 4 ?
-          (UInt32)1 << (level + 20) :
-          (UInt32)1 << (sizeof(size_t) / 2 + 24);
+    const UInt32 dictSize =
+        ( level <= 3 ? ((UInt32)1 << (level * 2 + 16)) :
+        ( level <= 6 ? ((UInt32)1 << (level + 19)) :
+        ( level <= 7 ? ((UInt32)1 << 25) : ((UInt32)1 << 26)
+        )));
     return dictSize;
   }
 
